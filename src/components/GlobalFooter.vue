@@ -22,18 +22,31 @@ import { GithubFilled } from '@ant-design/icons-vue'
 
 <style scoped>
 .footer {
-  background: #efefef;
+  background: var(--secondary-bg);
   text-align: center;
   padding: 20px;
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
+  transition: background 0.3s ease;
 }
 
 .copyright {
   margin: 0;
-  color: #666;
+  color: var(--text-color-secondary);
   font-size: 14px;
+  transition: color 0.3s ease;
+}
+
+.author-link {
+  color: var(--primary-color);
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.author-link:hover {
+  color: var(--primary-color);
+  opacity: 0.8;
 }
 </style>
