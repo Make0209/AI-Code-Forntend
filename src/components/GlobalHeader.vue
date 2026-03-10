@@ -31,9 +31,7 @@
             <div v-if="loginUserStore.loginUser.id">
               <a-dropdown>
                 <a-space>
-                  <a-avatar
-                    :src="loginUserStore.loginUser.userAvatar"
-                  />
+                  <a-avatar :src="loginUserStore.loginUser.userAvatar" />
                   {{ loginUserStore.loginUser.userName ?? '无名' }}
                 </a-space>
                 <template #overlay>
@@ -62,6 +60,7 @@ import { h, ref, inject, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { type MenuProps, message } from 'ant-design-vue'
 import { LogoutOutlined, HomeOutlined } from '@ant-design/icons-vue'
+import { TeamOutlined, FolderOpenOutlined,  } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -111,13 +110,15 @@ const originItems = [
   },
   {
     key: '/admin/userManage',
+    icon: () => h(TeamOutlined),
     label: '用户管理',
     title: '用户管理',
   },
   {
-    key: 'others',
-    label: h('a', { href: 'https://www.codefather.cn', target: '_blank' }, '编程导航'),
-    title: '编程导航',
+    key: '/admin/appManage',
+    icon: () => h(FolderOpenOutlined),
+    label: '应用管理',
+    title: '应用管理',
   },
 ]
 

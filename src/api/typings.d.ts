@@ -1,4 +1,93 @@
 declare namespace API {
+  type AppAddRequest = {
+    /** 应用初始化的 prompt */
+    initPrompt?: string
+  }
+
+  type AppAdminUpdateRequest = {
+    /** id */
+    id?: number
+    /** 应用名称 */
+    appName?: string
+    /** 应用封面 */
+    cover?: string
+    /** 优先级 */
+    priority?: number
+  }
+
+  type AppDeployRequest = {
+    /** 应用 id */
+    appId?: number
+  }
+
+  type AppQueryRequest = {
+    /** 当前页号 */
+    pageNum?: number
+    /** 页面大小 */
+    pageSize?: number
+    /** 排序字段 */
+    sortField?: string
+    /** 排序顺序（默认降序） */
+    sortOrder?: string
+    /** id */
+    id?: number
+    /** 应用名称 */
+    appName?: string
+    /** 应用封面 */
+    cover?: string
+    /** 应用初始化的 prompt */
+    initPrompt?: string
+    /** 代码生成类型（枚举） */
+    codeGenType?: string
+    /** 部署标识 */
+    deployKey?: string
+    /** 优先级 */
+    priority?: number
+    /** 创建用户id */
+    userId?: number
+  }
+
+  type AppUpdateRequest = {
+    /** id */
+    id?: number
+    /** 应用名称 */
+    appName?: string
+  }
+
+  type AppVO = {
+    /** id */
+    id?: number
+    /** 应用名称 */
+    appName?: string
+    /** 应用封面 */
+    cover?: string
+    /** 应用初始化的 prompt */
+    initPrompt?: string
+    /** 代码生成类型（枚举） */
+    codeGenType?: string
+    /** 部署标识 */
+    deployKey?: string
+    /** 部署时间 */
+    deployedTime?: string
+    /** 优先级 */
+    priority?: number
+    /** 创建用户id */
+    userId?: number
+    /** 创建时间 */
+    createTime?: string
+    /** 更新时间 */
+    updateTime?: string
+    user?: UserVO
+  }
+
+  type BaseResponseAppVO = {
+    /** 状态码 */
+    code?: number
+    data?: AppVO
+    /** 提示信息 */
+    message?: string
+  }
+
   type BaseResponseBoolean = {
     /** 状态码 */
     code?: number
@@ -21,6 +110,14 @@ declare namespace API {
     code?: number
     /** 数据 */
     data?: number
+    /** 提示信息 */
+    message?: string
+  }
+
+  type BaseResponsePageAppVO = {
+    /** 状态码 */
+    code?: number
+    data?: PageAppVO
     /** 提示信息 */
     message?: string
   }
@@ -58,9 +155,24 @@ declare namespace API {
     message?: string
   }
 
+  type chatToGenCodeParams = {
+    /** 应用 ID */
+    appId: number
+    /** 用户消息 */
+    message: string
+  }
+
   type DeleteRequest = {
     /** id */
     id?: number
+  }
+
+  type getAppVOByIdByAdminParams = {
+    id: number
+  }
+
+  type getAppVOByIdParams = {
+    id: number
   }
 
   type getInfoParams = {
@@ -97,6 +209,15 @@ declare namespace API {
     token?: string
   }
 
+  type PageAppVO = {
+    records?: AppVO[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
+  }
+
   type pageParams = {
     page: PageUser
   }
@@ -122,6 +243,12 @@ declare namespace API {
   type removeParams = {
     /** 主键 */
     id: number
+  }
+
+  type ServerSentEventString = true
+
+  type serveStaticResourceParams = {
+    deployKey: string
   }
 
   type User = {

@@ -25,10 +25,6 @@ import { GithubFilled } from '@ant-design/icons-vue'
   background: var(--secondary-bg);
   text-align: center;
   padding: 20px;
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
   transition: background 0.3s ease;
 }
 

@@ -20,11 +20,6 @@ myAxios.interceptors.request.use(
     } else {
       console.warn('⚠️ Token 不存在！')
     }
-    // 将 Sa-Token 空间权限 token 添加到请求头，用于团队空间权限校验
-    const spaceToken = localStorage.getItem('spaceToken')
-    if (spaceToken) {
-      config.headers['space-token'] = spaceToken
-    }
     return config
   },
   function (error) {
