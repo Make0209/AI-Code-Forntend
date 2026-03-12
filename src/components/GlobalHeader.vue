@@ -60,7 +60,7 @@ import { h, ref, inject, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { type MenuProps, message } from 'ant-design-vue'
 import { LogoutOutlined, HomeOutlined } from '@ant-design/icons-vue'
-import { TeamOutlined, FolderOpenOutlined,  } from '@ant-design/icons-vue'
+import { TeamOutlined, FolderOpenOutlined, CommentOutlined } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
 import ThemeToggle from '@/components/ThemeToggle.vue'
@@ -119,6 +119,12 @@ const originItems = [
     icon: () => h(FolderOpenOutlined),
     label: '应用管理',
     title: '应用管理',
+  },
+  {
+    key: '/admin/chatManage',
+    icon: () => h(CommentOutlined),
+    label: '对话管理',
+    title: '对话管理',
   },
 ]
 

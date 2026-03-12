@@ -122,6 +122,14 @@ declare namespace API {
     message?: string
   }
 
+  type BaseResponsePageChatHistory = {
+    /** 状态码 */
+    code?: number
+    data?: PageChatHistory
+    /** 提示信息 */
+    message?: string
+  }
+
   type BaseResponsePageUserVO = {
     /** 状态码 */
     code?: number
@@ -153,6 +161,48 @@ declare namespace API {
     data?: UserVO
     /** 提示信息 */
     message?: string
+  }
+
+  type ChatHistory = {
+    /** id */
+    id?: number
+    /** 消息 */
+    message?: string
+    /** user/ai */
+    messageType?: string
+    /** 应用id */
+    appId?: number
+    /** 创建用户id */
+    userId?: number
+    /** 创建时间 */
+    createTime?: string
+    /** 更新时间 */
+    updateTime?: string
+    /** 是否删除 */
+    isDelete?: number
+  }
+
+  type ChatHistoryQueryRequest = {
+    /** 当前页号 */
+    pageNum?: number
+    /** 页面大小 */
+    pageSize?: number
+    /** 排序字段 */
+    sortField?: string
+    /** 排序顺序（默认降序） */
+    sortOrder?: string
+    /** id */
+    id?: number
+    /** 消息内容 */
+    message?: string
+    /** 消息类型（user/ai） */
+    messageType?: string
+    /** 应用id */
+    appId?: number
+    /** 创建用户id */
+    userId?: number
+    /** 游标查询 - 最后一条记录的创建时间 用于分页查询，获取早于此时间的记录 */
+    lastCreateTime?: string
   }
 
   type chatToGenCodeParams = {
@@ -188,6 +238,15 @@ declare namespace API {
     id: number
   }
 
+  type listAppChatHistoryParams = {
+    /** 应用ID */
+    appId: number
+    /** 页面大小 */
+    pageSize: number
+    /** 最后一条记录的创建时间 */
+    lastCreateTime?: string
+  }
+
   type LoginUserVO = {
     /** 用户 id */
     id?: number
@@ -211,6 +270,15 @@ declare namespace API {
 
   type PageAppVO = {
     records?: AppVO[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
+  }
+
+  type PageChatHistory = {
+    records?: ChatHistory[]
     pageNumber?: number
     pageSize?: number
     totalPage?: number

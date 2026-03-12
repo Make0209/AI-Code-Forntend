@@ -1,6 +1,5 @@
 <template>
   <div id="appChatPage" :class="{ 'is-dark': isDarkMode }">
-    <!-- 顶部栏 -->
     <div class="header-bar">
       <div class="header-left">
         <h1 class="app-name">{{ appInfo?.appName || '网站生成器' }}</h1>
@@ -21,12 +20,15 @@
       </div>
     </div>
 
-    <!-- 主要内容区域 -->
     <div class="main-content">
-      <!-- 左侧对话区域 -->
       <div class="chat-section">
-        <!-- 消息区域 -->
         <div class="messages-container" ref="messagesContainer">
+          <div v-if="hasMoreHistory" class="load-more-container">
+            <a-button type="link" @click="loadMoreHistory" :loading="loadingHistory" size="small">
+              加载更多历史消息
+            </a-button>
+          </div>
+
           <div v-for="(message, index) in messages" :key="index" class="message-item">
             <div v-if="message.type === 'user'" class="user-message">
               <div class="message-content">{{ message.content }}</div>
@@ -49,7 +51,6 @@
           </div>
         </div>
 
-        <!-- 用户消息输入框 -->
         <div class="input-container">
           <div class="input-wrapper">
             <a-tooltip v-if="!isOwner" title="无法在别人的作品下对话哦~" placement="top">
@@ -87,7 +88,6 @@
         </div>
       </div>
 
-      <!-- 右侧网页展示区域 -->
       <div class="preview-section">
         <div class="preview-header">
           <h3>生成后的网页展示</h3>
@@ -120,7 +120,6 @@
       </div>
     </div>
 
-    <!-- 应用详情弹窗 -->
     <AppDetailModal
       v-model:open="appDetailVisible"
       :app="appInfo"
@@ -129,7 +128,6 @@
       @delete="deleteApp"
     />
 
-    <!-- 部署成功弹窗 -->
     <DeploySuccessModal
       v-model:open="deployModalVisible"
       :deploy-url="deployUrl"
@@ -148,6 +146,7 @@ import {
   deployApp as deployAppApi,
   getAppVoById,
 } from '@/api/appController'
+import { listAppChatHistory } from '@/api/chatHistoryController' // 新增
 import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
 import { request } from '@/request'
 
@@ -181,13 +180,19 @@ interface Message {
   type: 'user' | 'ai'
   content: string
   loading?: boolean
+  createTime?: string // 新增
 }
 
 const messages = ref<Message[]>([])
 const userInput = ref('')
 const isGenerating = ref(false)
 const messagesContainer = ref<HTMLElement>()
-const hasInitialConversation = ref(false)
+
+// 对话历史相关 - 新增逻辑
+const loadingHistory = ref(false)
+const hasMoreHistory = ref(false)
+const lastCreateTime = ref<string>()
+const historyLoaded = ref(false)
 
 // 预览相关
 const previewUrl = ref('')
@@ -214,7 +219,56 @@ const showAppDetail = () => {
   appDetailVisible.value = true
 }
 
-// 获取应用信息
+// 加载对话历史 - 新增方法
+const loadChatHistory = async (isLoadMore = false) => {
+  if (!appId.value || loadingHistory.value) return
+  loadingHistory.value = true
+  try {
+    const params: any = {
+      appId: appId.value,
+      pageSize: 10,
+    }
+    if (isLoadMore && lastCreateTime.value) {
+      params.lastCreateTime = lastCreateTime.value
+    }
+    const res = await listAppChatHistory(params)
+    if (res.data.code === 0 && res.data.data) {
+      const chatHistories = res.data.data.records || []
+      if (chatHistories.length > 0) {
+        const historyMessages: Message[] = chatHistories
+          .map((chat: any) => ({
+            type: (chat.messageType === 'user' ? 'user' : 'ai') as 'user' | 'ai',
+            content: chat.message || '',
+            createTime: chat.createTime,
+          }))
+          .reverse()
+
+        if (isLoadMore) {
+          messages.value.unshift(...historyMessages)
+        } else {
+          messages.value = historyMessages
+        }
+        lastCreateTime.value = chatHistories[chatHistories.length - 1]?.createTime
+        hasMoreHistory.value = chatHistories.length === 10
+      } else {
+        hasMoreHistory.value = false
+      }
+      historyLoaded.value = true
+    }
+  } catch (error) {
+    console.error('加载对话历史失败：', error)
+    message.error('加载对话历史失败')
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+// 加载更多历史 - 新增方法
+const loadMoreHistory = async () => {
+  await loadChatHistory(true)
+}
+
+// 获取应用信息 - 整合历史加载逻辑
 const fetchAppInfo = async () => {
   const id = route.params.id as string
   if (!id) {
@@ -232,8 +286,22 @@ const fetchAppInfo = async () => {
 
       const isViewMode = route.query.view === '1'
 
-      if (appInfo.value.initPrompt && !isViewMode && !hasInitialConversation.value) {
-        hasInitialConversation.value = true
+      // 整合：先加载历史记录
+      await loadChatHistory()
+
+      // 如果已有对话，更新预览
+      if (messages.value.length >= 2) {
+        updatePreview()
+      }
+
+      // 自动发送初始提示逻辑（仅限 Owner 且 且无历史记录时）
+      if (
+        appInfo.value.initPrompt &&
+        !isViewMode &&
+        isOwner.value &&
+        messages.value.length === 0 &&
+        historyLoaded.value
+      ) {
         await sendInitialMessage(appInfo.value.initPrompt)
       }
     } else {
@@ -250,7 +318,6 @@ const fetchAppInfo = async () => {
 // 发送初始消息
 const sendInitialMessage = async (prompt: string) => {
   messages.value.push({ type: 'user', content: prompt })
-
   const aiMessageIndex = messages.value.length
   messages.value.push({ type: 'ai', content: '', loading: true })
 
@@ -269,7 +336,6 @@ const sendMessage = async () => {
   userInput.value = ''
 
   messages.value.push({ type: 'user', content: msg })
-
   const aiMessageIndex = messages.value.length
   messages.value.push({ type: 'ai', content: '', loading: true })
 
@@ -280,7 +346,7 @@ const sendMessage = async () => {
   await generateCode(msg, aiMessageIndex)
 }
 
-// 生成代码 - 使用 EventSource 处理流式响应
+// 生成代码 - 保持 SSE 逻辑及 Token 处理
 const generateCode = async (userMessage: string, aiMessageIndex: number) => {
   let eventSource: EventSource | null = null
   let streamCompleted = false
@@ -431,7 +497,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // EventSource 会在组件卸载时自动清理
 })
 </script>
 
@@ -560,7 +625,14 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.85);
 }
 
-/* ===== Markdown 内容深色适配 ===== */
+/* 加载更多容器样式 */
+.load-more-container {
+  text-align: center;
+  padding: 8px 0;
+  margin-bottom: 16px;
+}
+
+/* ===== Markdown 内容深色适配 (原有代码) ===== */
 .is-dark .ai-message .message-content :deep(p),
 .is-dark .ai-message .message-content :deep(li),
 .is-dark .ai-message .message-content :deep(td),
@@ -596,7 +668,6 @@ onUnmounted(() => {
   overflow-x: auto;
 }
 
-/* 覆盖 highlight.js / prism 注入的浅色主题背景 */
 .is-dark .ai-message .message-content :deep(pre code),
 .is-dark .ai-message .message-content :deep(pre code.hljs),
 .is-dark .ai-message .message-content :deep(pre .hljs),
@@ -607,7 +678,7 @@ onUnmounted(() => {
   text-shadow: none !important;
 }
 
-/* highlight.js token 颜色覆盖（GitHub Dark 风格） */
+/* highlight.js token 颜色覆盖 */
 .is-dark .ai-message .message-content :deep(.hljs-keyword),
 .is-dark .ai-message .message-content :deep(.hljs-selector-tag),
 .is-dark .ai-message .message-content :deep(.hljs-literal) {
@@ -639,53 +710,6 @@ onUnmounted(() => {
 }
 .is-dark .ai-message .message-content :deep(.hljs-tag) {
   color: #7ee787 !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-addition) {
-  color: #aff5b4 !important;
-  background: #033a16 !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-deletion) {
-  color: #ffdcd7 !important;
-  background: #67060c !important;
-}
-
-/* 代码块内滚动条深色适配 */
-.is-dark .ai-message .message-content :deep(pre)::-webkit-scrollbar {
-  height: 6px;
-}
-.is-dark .ai-message .message-content :deep(pre)::-webkit-scrollbar-track {
-  background: #161b22;
-}
-.is-dark .ai-message .message-content :deep(pre)::-webkit-scrollbar-thumb {
-  background: #30363d;
-  border-radius: 3px;
-}
-.is-dark .ai-message .message-content :deep(pre)::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
-}
-
-.is-dark .ai-message .message-content :deep(blockquote) {
-  border-left: 4px solid #404040;
-  background: #2f2f2f;
-  padding: 8px 12px;
-  margin: 8px 0;
-}
-
-.is-dark .ai-message .message-content :deep(table) {
-  border-color: #404040;
-}
-
-.is-dark .ai-message .message-content :deep(th) {
-  background: #2f2f2f;
-  border-color: #404040;
-}
-
-.is-dark .ai-message .message-content :deep(td) {
-  border-color: #404040;
-}
-
-.is-dark .ai-message .message-content :deep(hr) {
-  border-color: #404040;
 }
 
 .message-avatar {
@@ -880,7 +904,6 @@ onUnmounted(() => {
 }
 </style>
 
-<!-- 非 scoped：全局覆盖 highlight.js 注入的浅色主题，必须在全局才能生效 -->
 <style>
 /* 仅在深色模式下的代码块背景、文字全面覆盖 */
 #appChatPage.is-dark pre,
@@ -928,13 +951,5 @@ onUnmounted(() => {
 }
 #appChatPage.is-dark .hljs-tag {
   color: #7ee787 !important;
-}
-#appChatPage.is-dark .hljs-regexp {
-  color: #a5d6ff !important;
-}
-#appChatPage.is-dark .hljs-symbol,
-#appChatPage.is-dark .hljs-bullet,
-#appChatPage.is-dark .hljs-link {
-  color: #79c0ff !important;
 }
 </style>

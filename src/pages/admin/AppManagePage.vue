@@ -39,37 +39,54 @@
       :scroll="{ x: 1200 }"
     >
       <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'cover'">
+        <!-- ID：截断显示，悬浮完整展示 -->
+        <template v-if="column.dataIndex === 'id'">
+          <a-tooltip :title="String(record.id)">
+            <span class="id-text">{{ record.id }}</span>
+          </a-tooltip>
+        </template>
+
+        <template v-else-if="column.dataIndex === 'cover'">
           <a-image v-if="record.cover" :src="record.cover" :width="80" :height="60" />
           <div v-else class="no-cover">无封面</div>
         </template>
+
         <template v-else-if="column.dataIndex === 'initPrompt'">
           <a-tooltip :title="record.initPrompt">
             <div class="prompt-text">{{ record.initPrompt }}</div>
           </a-tooltip>
         </template>
+
+        <!-- 生成类型：彩色 Tag -->
         <template v-else-if="column.dataIndex === 'codeGenType'">
-          {{ formatCodeGenType(record.codeGenType) }}
+          <a-tag :color="getCodeGenTypeColor(record.codeGenType)" class="type-tag">
+            {{ formatCodeGenType(record.codeGenType) }}
+          </a-tag>
         </template>
+
         <template v-else-if="column.dataIndex === 'priority'">
           <a-tag v-if="record.priority === 99" color="gold">精选</a-tag>
           <span v-else>{{ record.priority || 0 }}</span>
         </template>
+
         <template v-else-if="column.dataIndex === 'deployedTime'">
           <span v-if="record.deployedTime">
             {{ formatTime(record.deployedTime) }}
           </span>
           <span v-else class="text-gray">未部署</span>
         </template>
+
         <template v-else-if="column.dataIndex === 'createTime'">
           {{ formatTime(record.createTime) }}
         </template>
+
         <template v-else-if="column.dataIndex === 'user'">
           <UserInfo :user="record.user" size="small" />
         </template>
+
         <template v-else-if="column.key === 'action'">
           <a-space>
-            <a-button type="primary" size="small" @click="editApp(record)"> 编辑 </a-button>
+            <a-button type="primary" size="small" @click="editApp(record)">编辑</a-button>
             <a-button
               type="default"
               size="small"
@@ -99,58 +116,84 @@ import UserInfo from '@/components/UserInfo.vue'
 
 const router = useRouter()
 
+/** 根据 codeGenType 值返回对应 Tag 颜色 */
+const CODE_GEN_TYPE_COLOR_MAP: Record<string, string> = {
+  // 根据实际枚举值调整，常见示例如下：
+  AI: 'purple',
+  TEMPLATE: 'blue',
+  MANUAL: 'cyan',
+  AUTO: 'geekblue',
+  HYBRID: 'volcano',
+  // 兜底 fallback 在函数里处理
+}
+
+const getCodeGenTypeColor = (type: string | undefined): string => {
+  if (!type) return 'default'
+  return CODE_GEN_TYPE_COLOR_MAP[type] ?? 'green'
+}
+
 const columns = [
   {
     title: 'ID',
     dataIndex: 'id',
     width: 80,
     fixed: 'left',
+    align: 'center',
   },
   {
     title: '应用名称',
     dataIndex: 'appName',
     width: 150,
+    align: 'center',
   },
   {
     title: '封面',
     dataIndex: 'cover',
     width: 100,
+    align: 'center',
   },
   {
     title: '初始提示词',
     dataIndex: 'initPrompt',
     width: 200,
+    align: 'center',
   },
   {
     title: '生成类型',
     dataIndex: 'codeGenType',
-    width: 100,
+    width: 120,
+    align: 'center',
   },
   {
     title: '优先级',
     dataIndex: 'priority',
     width: 80,
+    align: 'center',
   },
   {
     title: '部署时间',
     dataIndex: 'deployedTime',
     width: 160,
+    align: 'center',
   },
   {
     title: '创建者',
     dataIndex: 'user',
     width: 120,
+    align: 'center',
   },
   {
     title: '创建时间',
     dataIndex: 'createTime',
     width: 160,
+    align: 'center',
   },
   {
     title: '操作',
     key: 'action',
     width: 200,
     fixed: 'right',
+    align: 'center',
   },
 ]
 
@@ -207,7 +250,6 @@ const doTableChange = (page: { current: number; pageSize: number }) => {
 
 // 搜索
 const doSearch = () => {
-  // 重置页码
   searchParams.pageNum = 1
   fetchData()
 }
@@ -231,7 +273,6 @@ const toggleFeatured = async (app: API.AppVO) => {
 
     if (res.data.code === 0) {
       message.success(newPriority === 99 ? '已设为精选' : '已取消精选')
-      // 刷新数据
       fetchData()
     } else {
       message.error('操作失败：' + res.data.message)
@@ -250,7 +291,6 @@ const deleteApp = async (id: number | undefined) => {
     const res = await deleteAppByAdmin({ id })
     if (res.data.code === 0) {
       message.success('删除成功')
-      // 刷新数据
       fetchData()
     } else {
       message.error('删除失败：' + res.data.message)
@@ -265,10 +305,22 @@ const deleteApp = async (id: number | undefined) => {
 <style scoped>
 #appManagePage {
   padding: 24px;
-  background: transparent; /* 让 a-card 或布局处理背景 */
+  background: transparent;
   margin-top: 16px;
 }
 
+/* ── ID 截断显示 ── */
+.id-text {
+  display: inline-block;
+  max-width: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: default;
+}
+
+/* ── 无封面占位 ── */
 .no-cover {
   width: 80px;
   height: 60px;
@@ -281,6 +333,13 @@ const deleteApp = async (id: number | undefined) => {
   border-radius: 4px;
 }
 
+/* 深色模式 */
+:global(.dark) .no-cover {
+  background: #2a2a2a;
+  color: #666;
+}
+
+/* ── 提示词截断 ── */
 .prompt-text {
   max-width: 200px;
   overflow: hidden;
@@ -288,10 +347,12 @@ const deleteApp = async (id: number | undefined) => {
   white-space: nowrap;
 }
 
+/* ── 灰色文字 ── */
 .text-gray {
   color: #999;
 }
 
+/* ── 精选按钮 ── */
 .featured-btn {
   background: #faad14;
   border-color: #faad14;
@@ -303,7 +364,70 @@ const deleteApp = async (id: number | undefined) => {
   border-color: #d48806;
 }
 
+/* ── 生成类型 Tag 统一内边距 ── */
+.type-tag {
+  font-size: 12px;
+  padding: 0 8px;
+  border-radius: 4px;
+}
+
+/* ── 表格单元格垂直居中 ── */
 :deep(.ant-table-tbody > tr > td) {
   vertical-align: middle;
+}
+
+/* ── 表头居中（配合 columns 里的 align: 'center'）── */
+:deep(.ant-table-thead > tr > th) {
+  text-align: center !important;
+}
+
+/* ════════════════════════════════════════════
+   深色模式：滚动条适配
+   ════════════════════════════════════════════ */
+
+/* Webkit 内核（Chrome / Edge / Safari） */
+:deep(.ant-table-body)::-webkit-scrollbar,
+:deep(.ant-table-content)::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+:deep(.ant-table-body)::-webkit-scrollbar-track,
+:deep(.ant-table-content)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:deep(.ant-table-body)::-webkit-scrollbar-thumb,
+:deep(.ant-table-content)::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+:deep(.ant-table-body)::-webkit-scrollbar-thumb:hover,
+:deep(.ant-table-content)::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* 深色模式下覆盖滚动条颜色 */
+:global(.dark) :deep(.ant-table-body)::-webkit-scrollbar-thumb,
+:global(.dark) :deep(.ant-table-content)::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+:global(.dark) :deep(.ant-table-body)::-webkit-scrollbar-thumb:hover,
+:global(.dark) :deep(.ant-table-content)::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* Firefox */
+:deep(.ant-table-body),
+:deep(.ant-table-content) {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+:global(.dark) :deep(.ant-table-body),
+:global(.dark) :deep(.ant-table-content) {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 </style>
