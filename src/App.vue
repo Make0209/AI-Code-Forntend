@@ -33,9 +33,7 @@ watch(currentTheme, (newTheme) => {
 
 // 动态主题配置 - 使用 Ant Design Vue 的主题算法
 const themeConfig = computed(() => ({
-  algorithm: currentTheme.value === 'dark' 
-    ? antdTheme.darkAlgorithm 
-    : antdTheme.defaultAlgorithm,
+  algorithm: currentTheme.value === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
 }))
 </script>
 
@@ -134,5 +132,11 @@ body {
 
 .dark-theme .feature-icon {
   color: #1890ff !important;
+}
+body,
+*,
+*::before,
+*::after {
+  font-family: 'HarmonyOS Sans SC', 'HarmonyOS Sans', sans-serif !important;
 }
 </style>

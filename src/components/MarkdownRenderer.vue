@@ -101,11 +101,12 @@ const renderedMarkdown = computed(() => {
   color: #666;
 }
 
+/* 行内 code */
 .markdown-content :deep(code) {
   background-color: #f1f1f1;
   padding: 0.2em 0.4em;
   border-radius: 3px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'HarmonyOS Sans', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; /* ← 改这里 */
   font-size: 0.9em;
 }
 
@@ -171,10 +172,11 @@ const renderedMarkdown = computed(() => {
 }
 
 /* 代码高亮样式优化 */
+
+/* 代码块 hljs */
 .markdown-content :deep(.hljs) {
-  background-color: #f8f8f8 !important;
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: 'HarmonyOS Sans', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; /* ← 改这里 */
   font-size: 0.9em;
   line-height: 1.4;
 }
@@ -213,5 +215,25 @@ const renderedMarkdown = computed(() => {
 .markdown-content :deep(.hljs-title) {
   color: #6f42c1;
   font-weight: 600;
+}
+</style>
+
+<!-- MarkdownRenderer.vue 末尾，在 </style> 后面追加 -->
+<style>
+/* 代码块横向滚动条样式 */
+.markdown-content pre::-webkit-scrollbar {
+  height: 6px;
+}
+.markdown-content pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+.markdown-content pre::-webkit-scrollbar-thumb {
+  background: #d0d0d0;
+  border-radius: 3px;
+}
+
+/* 深色模式适配 —— 与 AppChatPage.vue 保持一致 */
+.is-dark .markdown-content pre::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
 }
 </style>

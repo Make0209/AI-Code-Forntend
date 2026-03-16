@@ -4,7 +4,7 @@
       <div class="header-left">
         <h1 class="app-name">{{ appInfo?.appName || '网站生成器' }}</h1>
       </div>
-      <div class="header-right">
+      <div class="header-right" style="gap: 17px; display: flex">
         <a-button type="default" @click="showAppDetail">
           <template #icon>
             <InfoCircleOutlined />
@@ -38,7 +38,7 @@
             </div>
             <div v-else class="ai-message">
               <div class="message-avatar">
-                <a-avatar :src="aiAvatar" />
+                <a-avatar :src="currentAiAvatar" />
               </div>
               <div class="message-content">
                 <MarkdownRenderer v-if="message.content" :content="message.content" />
@@ -53,31 +53,20 @@
 
         <div class="input-container">
           <div class="input-wrapper">
-            <a-tooltip v-if="!isOwner" title="无法在别人的作品下对话哦~" placement="top">
-              <a-textarea
-                v-model:value="userInput"
-                placeholder="请描述你想生成的网站，越详细效果越好哦"
-                :rows="4"
-                :maxlength="1000"
-                @keydown.enter.prevent="sendMessage"
-                :disabled="isGenerating || !isOwner"
-              />
-            </a-tooltip>
             <a-textarea
-              v-else
               v-model:value="userInput"
-              placeholder="请描述你想生成的网站，越详细效果越好哦"
+              placeholder="请描述你想生成的网站..."
               :rows="4"
               :maxlength="1000"
               @keydown.enter.prevent="sendMessage"
-              :disabled="isGenerating"
+              :disabled="isGenerating || (!isOwner && !isAdmin)"
             />
             <div class="input-actions">
               <a-button
                 type="primary"
                 @click="sendMessage"
                 :loading="isGenerating"
-                :disabled="!isOwner"
+                :disabled="!isOwner && !isAdmin"
               >
                 <template #icon>
                   <SendOutlined />
@@ -137,7 +126,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
@@ -146,7 +135,7 @@ import {
   deployApp as deployAppApi,
   getAppVoById,
 } from '@/api/appController'
-import { listAppChatHistory } from '@/api/chatHistoryController' // 新增
+import { listAppChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
 import { request } from '@/request'
 
@@ -154,6 +143,7 @@ import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import aiAvatar from '@/assets/aiAvatar.png'
+import deepseekAvatar from '@/assets/deepseek-color.png'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 
 import {
@@ -163,24 +153,22 @@ import {
   SendOutlined,
 } from '@ant-design/icons-vue'
 
-// 注入主题
 const currentTheme = inject<any>('currentTheme')
 const isDarkMode = computed(() => currentTheme?.value === 'dark')
+const currentAiAvatar = computed(() => (isDarkMode.value ? deepseekAvatar : aiAvatar))
 
 const route = useRoute()
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
-// 应用信息
 const appInfo = ref<API.AppVO>()
 const appId = ref<string>()
 
-// 对话相关
 interface Message {
   type: 'user' | 'ai'
   content: string
   loading?: boolean
-  createTime?: string // 新增
+  createTime?: string
 }
 
 const messages = ref<Message[]>([])
@@ -188,272 +176,165 @@ const userInput = ref('')
 const isGenerating = ref(false)
 const messagesContainer = ref<HTMLElement>()
 
-// 对话历史相关 - 新增逻辑
 const loadingHistory = ref(false)
 const hasMoreHistory = ref(false)
 const lastCreateTime = ref<string>()
 const historyLoaded = ref(false)
 
-// 预览相关
 const previewUrl = ref('')
 const previewReady = ref(false)
-
-// 部署相关
 const deploying = ref(false)
 const deployModalVisible = ref(false)
 const deployUrl = ref('')
 
-// 权限相关
-const isOwner = computed(() => {
-  return appInfo.value?.userId === loginUserStore.loginUser.id
-})
-
-const isAdmin = computed(() => {
-  return loginUserStore.loginUser.userRole === 'admin'
-})
-
-// 应用详情相关
+const isOwner = computed(() => appInfo.value?.userId === loginUserStore.loginUser.id)
+const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
 const appDetailVisible = ref(false)
 
 const showAppDetail = () => {
   appDetailVisible.value = true
 }
 
-// 加载对话历史 - 新增方法
 const loadChatHistory = async (isLoadMore = false) => {
   if (!appId.value || loadingHistory.value) return
   loadingHistory.value = true
   try {
-    const params: any = {
-      appId: appId.value,
-      pageSize: 10,
-    }
-    if (isLoadMore && lastCreateTime.value) {
-      params.lastCreateTime = lastCreateTime.value
-    }
+    const params: any = { appId: appId.value, pageSize: 10 }
+    if (isLoadMore && lastCreateTime.value) params.lastCreateTime = lastCreateTime.value
     const res = await listAppChatHistory(params)
     if (res.data.code === 0 && res.data.data) {
-      const chatHistories = res.data.data.records || []
-      if (chatHistories.length > 0) {
-        const historyMessages: Message[] = chatHistories
-          .map((chat: any) => ({
-            type: (chat.messageType === 'user' ? 'user' : 'ai') as 'user' | 'ai',
-            content: chat.message || '',
-            createTime: chat.createTime,
-          }))
-          .reverse()
-
-        if (isLoadMore) {
-          messages.value.unshift(...historyMessages)
-        } else {
-          messages.value = historyMessages
-        }
-        lastCreateTime.value = chatHistories[chatHistories.length - 1]?.createTime
-        hasMoreHistory.value = chatHistories.length === 10
-      } else {
-        hasMoreHistory.value = false
-      }
+      const records = res.data.data.records || []
+      const historyMessages: Message[] = records
+        .map((chat: any) => ({
+          type: chat.messageType === 'user' ? 'user' : 'ai',
+          content: chat.message || '',
+          createTime: chat.createTime,
+        }))
+        .reverse()
+      if (isLoadMore) messages.value.unshift(...historyMessages)
+      else messages.value = historyMessages
+      lastCreateTime.value = records[records.length - 1]?.createTime
+      hasMoreHistory.value = records.length === 10
       historyLoaded.value = true
     }
-  } catch (error) {
-    console.error('加载对话历史失败：', error)
-    message.error('加载对话历史失败')
   } finally {
     loadingHistory.value = false
   }
 }
 
-// 加载更多历史 - 新增方法
-const loadMoreHistory = async () => {
-  await loadChatHistory(true)
-}
+const loadMoreHistory = () => loadChatHistory(true)
 
-// 获取应用信息 - 整合历史加载逻辑
 const fetchAppInfo = async () => {
   const id = route.params.id as string
-  if (!id) {
-    message.error('应用ID不存在')
-    await router.push('/')
-    return
-  }
-
+  if (!id) return router.push('/')
   appId.value = id
-
   try {
-    const res = await getAppVoById({ id: id as unknown as number })
+    const res = await getAppVoById({ id: id as any })
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
-
-      const isViewMode = route.query.view === '1'
-
-      // 整合：先加载历史记录
       await loadChatHistory()
-
-      // 如果已有对话，更新预览
-      if (messages.value.length >= 2) {
-        updatePreview()
-      }
-
-      // 自动发送初始提示逻辑（仅限 Owner 且 且无历史记录时）
+      if (messages.value.length >= 2) updatePreview()
       if (
         appInfo.value.initPrompt &&
-        !isViewMode &&
         isOwner.value &&
         messages.value.length === 0 &&
         historyLoaded.value
       ) {
         await sendInitialMessage(appInfo.value.initPrompt)
       }
-    } else {
-      message.error('获取应用信息失败')
-      await router.push('/')
     }
-  } catch (error) {
-    console.error('获取应用信息失败：', error)
-    message.error('获取应用信息失败')
-    await router.push('/')
+  } catch (e) {
+    router.push('/')
   }
 }
 
-// 发送初始消息
 const sendInitialMessage = async (prompt: string) => {
   messages.value.push({ type: 'user', content: prompt })
-  const aiMessageIndex = messages.value.length
+  const idx = messages.value.length
   messages.value.push({ type: 'ai', content: '', loading: true })
-
   await nextTick()
   scrollToBottom()
-
   isGenerating.value = true
-  await generateCode(prompt, aiMessageIndex)
+  await generateCode(prompt, idx)
 }
 
-// 发送消息
 const sendMessage = async () => {
   if (!userInput.value.trim() || isGenerating.value) return
-
   const msg = userInput.value.trim()
   userInput.value = ''
-
   messages.value.push({ type: 'user', content: msg })
-  const aiMessageIndex = messages.value.length
+  const idx = messages.value.length
   messages.value.push({ type: 'ai', content: '', loading: true })
-
   await nextTick()
   scrollToBottom()
-
   isGenerating.value = true
-  await generateCode(msg, aiMessageIndex)
+  await generateCode(msg, idx)
 }
 
-// 生成代码 - 保持 SSE 逻辑及 Token 处理
-const generateCode = async (userMessage: string, aiMessageIndex: number) => {
+const generateCode = async (userMessage: string, idx: number) => {
   let eventSource: EventSource | null = null
-  let streamCompleted = false
-
+  let completed = false
   try {
     const baseURL = request.defaults.baseURL || API_BASE_URL
-    const token = localStorage.getItem('token')
     const params = new URLSearchParams({
-      appId: appId.value || '',
+      appId: appId.value!,
       message: userMessage,
-      token: token || '',
+      token: localStorage.getItem('token') || '',
     })
-
-    const url = `${baseURL}/app/chat/gen/code?${params}`
-
-    eventSource = new EventSource(url, { withCredentials: true })
-
-    let fullContent = ''
-
-    eventSource.onmessage = function (event) {
-      if (streamCompleted) return
-      try {
-        const parsed = JSON.parse(event.data)
-        const content = parsed.d
-        if (content !== undefined && content !== null) {
-          fullContent += content
-          messages.value[aiMessageIndex].content = fullContent
-          messages.value[aiMessageIndex].loading = false
-          scrollToBottom()
-        }
-      } catch (error) {
-        console.error('解析消息失败:', error)
-        handleError(error, aiMessageIndex)
+    eventSource = new EventSource(`${baseURL}/app/chat/gen/code?${params}`, {
+      withCredentials: true,
+    })
+    let full = ''
+    eventSource.onmessage = (e) => {
+      if (completed) return
+      const content = JSON.parse(e.data).d
+      if (content) {
+        full += content
+        messages.value[idx].content = full
+        messages.value[idx].loading = false
+        scrollToBottom()
       }
     }
-
-    eventSource.addEventListener('done', function () {
-      if (streamCompleted) return
-      streamCompleted = true
+    const finish = () => {
+      if (completed) return
+      completed = true
       isGenerating.value = false
       eventSource?.close()
-      setTimeout(async () => {
-        await fetchAppInfo()
+      setTimeout(() => {
+        fetchAppInfo()
         updatePreview()
       }, 1000)
-    })
-
-    eventSource.onerror = function () {
-      if (streamCompleted || !isGenerating.value) return
-      if (eventSource?.readyState === EventSource.CONNECTING) {
-        streamCompleted = true
-        isGenerating.value = false
-        eventSource?.close()
-        setTimeout(async () => {
-          await fetchAppInfo()
-          updatePreview()
-        }, 1000)
-      } else {
-        handleError(new Error('SSE连接错误'), aiMessageIndex)
-      }
     }
-  } catch (error) {
-    console.error('创建 EventSource 失败：', error)
-    handleError(error, aiMessageIndex)
+    eventSource.addEventListener('done', finish)
+    eventSource.onerror = () => {
+      if (!completed) finish()
+    }
+  } catch (e) {
+    isGenerating.value = false
   }
-}
-
-const handleError = (error: unknown, aiMessageIndex: number) => {
-  console.error('生成代码失败：', error)
-  messages.value[aiMessageIndex].content = '抱歉，生成过程中出现了错误，请重试。'
-  messages.value[aiMessageIndex].loading = false
-  message.error('生成失败，请重试')
-  isGenerating.value = false
 }
 
 const updatePreview = () => {
-  if (appId.value) {
-    const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    previewUrl.value = getStaticPreviewUrl(codeGenType, appId.value)
-    previewReady.value = true
-  }
+  if (appId.value)
+    previewUrl.value = getStaticPreviewUrl(
+      appInfo.value?.codeGenType || CodeGenTypeEnum.HTML,
+      appId.value,
+    )
 }
 
 const scrollToBottom = () => {
-  if (messagesContainer.value) {
+  if (messagesContainer.value)
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-  }
 }
 
 const deployApp = async () => {
-  if (!appId.value) {
-    message.error('应用ID不存在')
-    return
-  }
   deploying.value = true
   try {
-    const res = await deployAppApi({ appId: appId.value as unknown as number })
-    if (res.data.code === 0 && res.data.data) {
+    const res = await deployAppApi({ appId: appId.value as any })
+    if (res.data.code === 0) {
       deployUrl.value = res.data.data
       deployModalVisible.value = true
-      message.success('部署成功')
-    } else {
-      message.error('部署失败：' + res.data.message)
     }
-  } catch (error) {
-    console.error('部署失败：', error)
-    message.error('部署失败，请重试')
   } finally {
     deploying.value = false
   }
@@ -462,93 +343,54 @@ const deployApp = async () => {
 const openInNewTab = () => {
   if (previewUrl.value) window.open(previewUrl.value, '_blank')
 }
-
 const openDeployedSite = () => {
   if (deployUrl.value) window.open(deployUrl.value, '_blank')
 }
-
 const onIframeLoad = () => {
   previewReady.value = true
 }
-
 const editApp = () => {
   if (appInfo.value?.id) router.push(`/app/edit/${appInfo.value.id}`)
 }
 
 const deleteApp = async () => {
-  if (!appInfo.value?.id) return
-  try {
-    const res = await deleteAppApi({ id: appInfo.value.id })
-    if (res.data.code === 0) {
-      message.success('删除成功')
-      appDetailVisible.value = false
-      await router.push('/')
-    } else {
-      message.error('删除失败：' + res.data.message)
-    }
-  } catch (error) {
-    console.error('删除失败：', error)
-    message.error('删除失败')
-  }
+  const res = await deleteAppApi({ id: appInfo.value!.id! })
+  if (res.data.code === 0) router.push('/')
 }
 
-onMounted(() => {
-  fetchAppInfo()
-})
-
-onUnmounted(() => {
-})
+onMounted(() => fetchAppInfo())
 </script>
 
 <style scoped>
-/* ===== 基础布局 ===== */
+/* 基础布局 */
 #appChatPage {
   height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 16px;
   background: #fdfdfd;
-  transition: background 0.3s, color 0.3s;
+  transition: 0.3s;
 }
-
-/* ===== 深色模式 - 页面背景 ===== */
 #appChatPage.is-dark {
   background: #141414;
   color: #f0f0f0;
 }
 
-/* 顶部栏 */
 .header-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
 }
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .app-name {
-  margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #1a1a1a;
-  transition: color 0.3s;
 }
-
 .is-dark .app-name {
   color: rgba(255, 255, 255, 0.85);
 }
 
-.header-right {
-  display: flex;
-  gap: 12px;
-}
-
-/* 主要内容区域 */
 .main-content {
   flex: 1;
   display: flex;
@@ -556,8 +398,6 @@ onUnmounted(() => {
   padding: 8px;
   overflow: hidden;
 }
-
-/* ===== 左侧对话区域 ===== */
 .chat-section {
   flex: 2;
   display: flex;
@@ -566,9 +406,7 @@ onUnmounted(() => {
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  transition: background 0.3s, box-shadow 0.3s;
 }
-
 .is-dark .chat-section {
   background: #1f1f1f;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -578,378 +416,259 @@ onUnmounted(() => {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
-  scroll-behavior: smooth;
 }
-
 .message-item {
   margin-bottom: 12px;
 }
-
 .user-message {
   display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
   gap: 8px;
 }
-
 .ai-message {
   display: flex;
   justify-content: flex-start;
-  align-items: flex-start;
   gap: 8px;
 }
 
 .message-content {
-  max-width: 70%;
+  max-width: 85%;
   padding: 12px 16px;
   border-radius: 12px;
   line-height: 1.5;
-  word-wrap: break-word;
-  transition: background 0.3s, color 0.3s;
 }
-
 .user-message .message-content {
   background: #1890ff;
   color: white;
 }
 
+/* AI 消息文字移除特定颜色，继承主题色 */
 .ai-message .message-content {
   background: #f5f5f5;
-  color: #1a1a1a;
-  padding: 8px 12px;
 }
-
-/* 深色模式 - AI 消息气泡 */
 .is-dark .ai-message .message-content {
   background: #2a2a2a;
-  color: rgba(255, 255, 255, 0.85);
 }
 
-/* 加载更多容器样式 */
-.load-more-container {
-  text-align: center;
-  padding: 8px 0;
-  margin-bottom: 16px;
-}
-
-/* ===== Markdown 内容深色适配 (原有代码) ===== */
-.is-dark .ai-message .message-content :deep(p),
-.is-dark .ai-message .message-content :deep(li),
-.is-dark .ai-message .message-content :deep(td),
-.is-dark .ai-message .message-content :deep(th),
-.is-dark .ai-message .message-content :deep(blockquote) {
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.is-dark .ai-message .message-content :deep(h1),
-.is-dark .ai-message .message-content :deep(h2),
-.is-dark .ai-message .message-content :deep(h3),
-.is-dark .ai-message .message-content :deep(h4),
-.is-dark .ai-message .message-content :deep(h5),
-.is-dark .ai-message .message-content :deep(h6) {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-.is-dark .ai-message .message-content :deep(a) {
-  color: #4ea3ff;
-}
-
-.is-dark .ai-message .message-content :deep(code) {
-  background: #3a3a3a;
-  color: #e07b53;
-  border-radius: 4px;
-  padding: 1px 5px;
-}
-
-.is-dark .ai-message .message-content :deep(pre) {
-  background: #0d1117 !important;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  overflow-x: auto;
-}
-
-.is-dark .ai-message .message-content :deep(pre code),
-.is-dark .ai-message .message-content :deep(pre code.hljs),
-.is-dark .ai-message .message-content :deep(pre .hljs),
-.is-dark .ai-message .message-content :deep(pre [class*="language-"]) {
-  background: transparent !important;
-  color: #e6edf3 !important;
-  padding: 0 !important;
-  text-shadow: none !important;
-}
-
-/* highlight.js token 颜色覆盖 */
-.is-dark .ai-message .message-content :deep(.hljs-keyword),
-.is-dark .ai-message .message-content :deep(.hljs-selector-tag),
-.is-dark .ai-message .message-content :deep(.hljs-literal) {
-  color: #ff7b72 !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-string),
-.is-dark .ai-message .message-content :deep(.hljs-attr) {
-  color: #a5d6ff !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-number) {
-  color: #79c0ff !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-title),
-.is-dark .ai-message .message-content :deep(.hljs-section),
-.is-dark .ai-message .message-content :deep(.hljs-name) {
-  color: #d2a8ff !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-comment),
-.is-dark .ai-message .message-content :deep(.hljs-quote) {
-  color: #8b949e !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-built_in),
-.is-dark .ai-message .message-content :deep(.hljs-type) {
-  color: #ffa657 !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-variable),
-.is-dark .ai-message .message-content :deep(.hljs-template-variable) {
-  color: #ffa198 !important;
-}
-.is-dark .ai-message .message-content :deep(.hljs-tag) {
-  color: #7ee787 !important;
-}
-
-.message-avatar {
-  flex-shrink: 0;
-}
-
-.loading-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #666;
-  transition: color 0.3s;
-}
-
-.is-dark .loading-indicator {
-  color: rgba(255, 255, 255, 0.45);
-}
-
-/* ===== 输入区域 ===== */
 .input-container {
   padding: 16px;
   background: white;
   border-top: 1px solid #f0f0f0;
-  transition: background 0.3s, border-color 0.3s;
 }
-
 .is-dark .input-container {
   background: #1f1f1f;
   border-top-color: #303030;
 }
-
 .input-wrapper {
   position: relative;
 }
-
-.input-wrapper .ant-input {
-  padding-right: 50px;
-}
-
 .input-actions {
   position: absolute;
   bottom: 8px;
   right: 8px;
 }
 
-/* ===== 右侧预览区域 ===== */
 .preview-section {
   flex: 3;
   display: flex;
   flex-direction: column;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  transition: background 0.3s, box-shadow 0.3s;
 }
-
 .is-dark .preview-section {
   background: #1f1f1f;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
-
 .preview-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
   padding: 16px;
   border-bottom: 1px solid #e8e8e8;
-  transition: border-color 0.3s;
 }
-
 .is-dark .preview-header {
   border-bottom-color: #303030;
 }
-
-.preview-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  transition: color 0.3s;
-}
-
-.is-dark .preview-header h3 {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.preview-actions {
-  display: flex;
-  gap: 8px;
-}
-
 .preview-content {
   flex: 1;
   position: relative;
-  overflow: hidden;
-}
-
-.preview-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #666;
-  transition: color 0.3s;
-}
-
-.is-dark .preview-placeholder {
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.placeholder-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
+  display: flex; /* 加这行 */
+  align-items: center; /* 加这行 */
+  justify-content: center; /* 加这行 */
 }
 
 .preview-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #666;
-  transition: color 0.3s;
+  gap: 12px;
+  color: #888;
 }
 
-.is-dark .preview-loading {
-  color: rgba(255, 255, 255, 0.45);
+.preview-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #888;
 }
-
-.preview-loading p {
-  margin-top: 16px;
-}
-
 .preview-iframe {
   width: 100%;
   height: 100%;
   border: none;
+  position: absolute; /* 加这行，脱离 flex 流 */
+  top: 0;
+  left: 0;
 }
 
-/* 响应式设计 */
-@media (max-width: 1024px) {
-  .main-content {
-    flex-direction: column;
-  }
-
-  .chat-section,
-  .preview-section {
-    flex: none;
-    height: 50vh;
-  }
-}
-
-@media (max-width: 768px) {
-  .header-bar {
-    padding: 12px 16px;
-  }
-
-  .app-name {
-    font-size: 16px;
-  }
-
-  .main-content {
-    padding: 8px;
-    gap: 8px;
-  }
-
-  .message-content {
-    max-width: 85%;
-  }
-}
-
-/* ===== 消息区域滚动条深色适配 ===== */
 .messages-container::-webkit-scrollbar {
   width: 6px;
-}
-.messages-container::-webkit-scrollbar-track {
-  background: transparent;
 }
 .messages-container::-webkit-scrollbar-thumb {
   background: #d0d0d0;
   border-radius: 3px;
 }
-.messages-container::-webkit-scrollbar-thumb:hover {
-  background: #b0b0b0;
-}
 .is-dark .messages-container::-webkit-scrollbar-thumb {
   background: #3a3a3a;
-}
-.is-dark .messages-container::-webkit-scrollbar-thumb:hover {
-  background: #555;
 }
 </style>
 
 <style>
-/* 仅在深色模式下的代码块背景、文字全面覆盖 */
-#appChatPage.is-dark pre,
-#appChatPage.is-dark pre.hljs,
-#appChatPage.is-dark pre code,
-#appChatPage.is-dark pre code.hljs,
-#appChatPage.is-dark .hljs {
-  background: #0d1117 !important;
-  color: #e6edf3 !important;
-  text-shadow: none !important;
+/* 全局样式 - 深度优化 AI 渲染效果 */
+/* 5. 修复 Markdown 内容颜色，确保适配深色模式 (新增) */
+.markdown-content {
+  color: inherit !important;
 }
 
-/* 关键 token 颜色（GitHub Dark 风格）*/
-#appChatPage.is-dark .hljs-keyword,
-#appChatPage.is-dark .hljs-selector-tag,
-#appChatPage.is-dark .hljs-deletion {
-  color: #ff7b72 !important;
+/* 1. 正在调用工具状态 (TOOL_REQUEST) */
+.ai-message .message-content .tool-status-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 8px;
+  font-size: 14px;
+  background-color: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  animation: pulse-bg 2s infinite;
 }
-#appChatPage.is-dark .hljs-string,
-#appChatPage.is-dark .hljs-attr,
-#appChatPage.is-dark .hljs-addition {
-  color: #a5d6ff !important;
+
+.is-dark .ai-message .message-content .tool-status-loading {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
 }
-#appChatPage.is-dark .hljs-number,
-#appChatPage.is-dark .hljs-literal {
-  color: #79c0ff !important;
+
+.ai-message .message-content .spin-icon {
+  display: inline-block;
+  animation: spin 2s linear infinite;
+  font-size: 16px;
 }
-#appChatPage.is-dark .hljs-title,
-#appChatPage.is-dark .hljs-section,
-#appChatPage.is-dark .hljs-name,
-#appChatPage.is-dark .hljs-function {
-  color: #d2a8ff !important;
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
 }
-#appChatPage.is-dark .hljs-comment,
-#appChatPage.is-dark .hljs-quote {
-  color: #8b949e !important;
-  font-style: italic;
+@keyframes pulse-bg {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
-#appChatPage.is-dark .hljs-built_in,
-#appChatPage.is-dark .hljs-type,
-#appChatPage.is-dark .hljs-class,
-#appChatPage.is-dark .hljs-variable,
-#appChatPage.is-dark .hljs-template-variable {
-  color: #ffa657 !important;
+
+/* 2. 折叠代码块效果 (TOOL_EXECUTED) */
+.ai-message .message-content .tool-call-block {
+  margin: 16px 0;
+  border-radius: 8px;
+  border: 1px solid #e8e8e8;
+  background: #fafafa;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
-#appChatPage.is-dark .hljs-tag {
-  color: #7ee787 !important;
+
+.is-dark .ai-message .message-content .tool-call-block {
+  border-color: #30363d;
+  background-color: #161b22;
+}
+
+.ai-message .message-content .tool-call-block summary {
+  padding: 10px 16px;
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  background: #f6f8fa;
+  transition: background 0.2s;
+}
+
+.ai-message .message-content .tool-call-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.is-dark .ai-message .message-content .tool-call-block summary {
+  background: #21262d;
+  color: #c9d1d9;
+}
+
+.ai-message .message-content .chevron-icon {
+  font-size: 10px;
+  color: #888;
+  transition: transform 0.3s;
+}
+
+.ai-message .message-content .tool-call-block[open] .chevron-icon {
+  transform: rotate(90deg);
+}
+
+.ai-message .message-content .tool-call-block[open] pre {
+  margin: 0 !important;
+  border-radius: 0 0 8px 8px !important;
+  border: none !important;
+  border-top: 1px solid #e8e8e8 !important;
+}
+
+.is-dark .ai-message .message-content .tool-call-block[open] pre {
+  border-top-color: #30363d !important;
+}
+
+/* 3. Markdown 代码块适配深色模式 */
+.is-dark .message-content pre,
+.is-dark .message-content code {
+  background-color: #1e1e1e !important;
+  color: #d4d4d4 !important;
+}
+
+/* 代码内的高亮 token 适配 */
+.is-dark .hljs-keyword {
+  color: #569cd6 !important;
+}
+.is-dark .hljs-string {
+  color: #ce9178 !important;
+}
+.is-dark .hljs-title {
+  color: #dcdcaa !important;
+}
+.is-dark .hljs-comment {
+  color: #6a9955 !important;
+}
+
+/* 4. 引用块 (Thinking) */
+.ai-message .message-content blockquote {
+  border-left: 4px solid #ddd;
+  padding: 8px 16px;
+  margin: 12px 0;
+  background: rgba(0, 0, 0, 0.02);
+  color: #666;
+}
+
+.is-dark .ai-message .message-content blockquote {
+  border-left-color: #444;
+  background: rgba(255, 255, 255, 0.03);
+  color: #aaa;
 }
 </style>

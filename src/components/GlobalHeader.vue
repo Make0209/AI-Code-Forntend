@@ -176,7 +176,7 @@ const handleMenuClick: MenuProps['onClick'] = (e) => {
 
 .site-title {
   margin: 0;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   color: #1890ff;
   line-height: 64px;

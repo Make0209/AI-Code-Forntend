@@ -125,7 +125,7 @@ export async function getAppVoById(
   })
 }
 
-/** 分页获取精选应用列表 分页获取精选应用列表 POST /app/good/list/page/vo */
+/** 分页获取精选应用列表 POST /app/good/list/page/vo */
 export async function listGoodAppVoByPage(
   body: API.AppQueryRequest,
   options?: { [key: string]: any }
