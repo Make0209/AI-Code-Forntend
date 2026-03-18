@@ -217,6 +217,11 @@ declare namespace API {
     id?: number
   }
 
+  type downloadAppCodeParams = {
+    /** 应用ID */
+    appId: number
+  }
+
   type getAppVOByIdByAdminParams = {
     id: number
   }

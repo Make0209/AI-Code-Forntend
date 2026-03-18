@@ -1,8 +1,12 @@
 <template>
   <div id="appChatPage" :class="{ 'is-dark': isDarkMode }">
+    <!-- 顶部栏 -->
     <div class="header-bar">
       <div class="header-left">
         <h1 class="app-name">{{ appInfo?.appName || '网站生成器' }}</h1>
+        <a-tag v-if="appInfo?.codeGenType" color="blue" class="code-gen-type-tag">
+          {{ formatCodeGenType(appInfo.codeGenType) }}
+        </a-tag>
       </div>
       <div class="header-right" style="gap: 17px; display: flex">
         <a-button type="default" @click="showAppDetail">
@@ -10,6 +14,18 @@
             <InfoCircleOutlined />
           </template>
           应用详情
+        </a-button>
+        <a-button
+          type="primary"
+          ghost
+          @click="downloadCode"
+          :loading="downloading"
+          :disabled="!isOwner"
+        >
+          <template #icon>
+            <DownloadOutlined />
+          </template>
+          下载代码
         </a-button>
         <a-button type="primary" @click="deployApp" :loading="deploying">
           <template #icon>
@@ -128,7 +144,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import {
   deleteApp as deleteAppApi,
@@ -136,7 +151,7 @@ import {
   getAppVoById,
 } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
-import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
+import { CodeGenTypeEnum, formatCodeGenType } from '@/utils/codeGenTypes'
 import { request } from '@/request'
 
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -151,7 +166,9 @@ import {
   ExportOutlined,
   InfoCircleOutlined,
   SendOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons-vue'
+import message from 'ant-design-vue/es/message'
 
 const currentTheme = inject<any>('currentTheme')
 const isDarkMode = computed(() => currentTheme?.value === 'dark')
@@ -244,7 +261,7 @@ const fetchAppInfo = async () => {
       }
     }
   } catch (e) {
-    router.push('/')
+    await router.push('/')
   }
 }
 
@@ -359,6 +376,39 @@ const deleteApp = async () => {
 }
 
 onMounted(() => fetchAppInfo())
+
+// 下载相关
+const downloading = ref(false)
+
+// 下载代码
+const downloadCode = async () => {
+  if (!appId.value) {
+    message.error('应用ID不存在')
+    return
+  }
+  downloading.value = true
+  try {
+    // ✅ 用 request (axios)，自动携带 token
+    const response = await request.get(`/app/download/${appId.value}`, {
+      responseType: 'blob', // ✅ 关键：告诉 axios 响应是二进制
+    })
+    const contentDisposition = response.headers['content-disposition']
+    const fileName = contentDisposition?.match(/filename="(.+)"/)?.[1] || `app-${appId.value}.zip`
+    const blob = new Blob([response.data], { type: 'application/zip' })
+    const downloadUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = fileName
+    link.click()
+    URL.revokeObjectURL(downloadUrl)
+    message.success('代码下载成功')
+  } catch (error) {
+    console.error('下载失败：', error)
+    message.error('下载失败，请重试')
+  } finally {
+    downloading.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -382,10 +432,17 @@ onMounted(() => fetchAppInfo())
   align-items: center;
   padding: 12px 16px;
 }
+/* 在 .header-bar 下面加 */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .app-name {
   font-size: 18px;
   font-weight: 600;
   color: #1a1a1a;
+  margin: 0; /* ← 这行是关键，h1 默认有上下 margin 会撑开 */
 }
 .is-dark .app-name {
   color: rgba(255, 255, 255, 0.85);
@@ -440,6 +497,10 @@ onMounted(() => fetchAppInfo())
 .user-message .message-content {
   background: #1890ff;
   color: white;
+}
+
+.code-gen-type-tag {
+  font-size: 12px;
 }
 
 /* AI 消息文字移除特定颜色，继承主题色 */

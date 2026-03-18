@@ -136,7 +136,7 @@ onMounted(() => {
   <div id="homePage" :class="{ 'is-dark': isDarkMode }">
     <div class="container">
       <div class="hero-section">
-        <h1 class="hero-title">鱼皮 AI 应用生成平台</h1>
+        <h1 class="hero-title"> AI 应用生成平台</h1>
         <p class="hero-description">
           {{ isDarkMode ? '正在使用深色模式 - 沉浸式开发体验' : '不写一行代码，生成完整应用' }}
         </p>
