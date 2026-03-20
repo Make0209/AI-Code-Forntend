@@ -5,7 +5,7 @@ import { message } from 'ant-design-vue'
 import {
   CheckCircleOutlined,
   ThunderboltOutlined,
-  SkinOutlined,
+  BranchesOutlined,
   SendOutlined,
 } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
@@ -136,7 +136,7 @@ onMounted(() => {
   <div id="homePage" :class="{ 'is-dark': isDarkMode }">
     <div class="container">
       <div class="hero-section">
-        <h1 class="hero-title"> AI 应用生成平台</h1>
+        <h1 class="hero-title">AI 应用生成平台</h1>
         <p class="hero-description">
           {{ isDarkMode ? '正在使用深色模式 - 沉浸式开发体验' : '不写一行代码，生成完整应用' }}
         </p>
@@ -215,9 +215,9 @@ onMounted(() => {
           </a-col>
           <a-col :xs="24" :md="8">
             <div class="feature-item">
-              <SkinOutlined class="f-icon" />
-              <h3>主题适配</h3>
-              <p>支持深浅色模式切换，当前：{{ isDarkMode ? '深色' : '浅色' }}</p>
+              <BranchesOutlined class="f-icon" />
+              <h3>实时预览</h3>
+              <p>实时预览应用效果，快速调整参数</p>
             </div>
           </a-col>
         </a-row>
