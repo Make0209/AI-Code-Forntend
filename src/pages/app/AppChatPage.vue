@@ -201,7 +201,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLoginUserStore } from '@/stores/loginUser'
 import {
@@ -270,6 +270,10 @@ const messages = ref<Message[]>([])
 const userInput = ref('')
 const isGenerating = ref(false)
 const messagesContainer = ref<HTMLElement>()
+const activeEventSource = ref<EventSource | null>(null)
+let stopCurrentStream: (() => void) | null = null
+let activeStreamToken = 0
+let activeFetchToken = 0
 
 // ── 历史消息分页 ──────────────────────────────────────────────────────────────
 const loadingHistory = ref(false)
@@ -291,6 +295,39 @@ const previewIframe = ref<HTMLIFrameElement | null>(null)
 const isOwner = computed(() => appInfo.value?.userId === loginUserStore.loginUser.id)
 const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
 const appDetailVisible = ref(false)
+
+const closeCurrentStream = () => {
+  stopCurrentStream?.()
+  stopCurrentStream = null
+  activeEventSource.value = null
+  isGenerating.value = false
+}
+
+const resetPageState = () => {
+  activeFetchToken++
+  closeCurrentStream()
+  disableEditMode()
+  setIframe(null)
+  appInfo.value = undefined
+  userInput.value = ''
+  messages.value = []
+  lastCreateTime.value = undefined
+  hasMoreHistory.value = false
+  historyLoaded.value = false
+  previewReady.value = false
+  previewUrl.value = ''
+}
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState !== 'hidden') return
+  if (!isGenerating.value) return
+  closeCurrentStream()
+  const last = messages.value[messages.value.length - 1]
+  if (last?.type === 'ai' && last.loading) {
+    last.loading = false
+    last.content += '\n\n> 流式连接在页面切后台时已暂停，请重新发送继续。'
+  }
+}
 
 // ── 应用详情弹窗 ──────────────────────────────────────────────────────────────
 const showAppDetail = () => {
@@ -329,14 +366,17 @@ const loadMoreHistory = () => loadChatHistory(true)
 
 // ── 获取应用信息 ──────────────────────────────────────────────────────────────
 const fetchAppInfo = async () => {
+  const fetchToken = ++activeFetchToken
   const id = route.params.id as string
   if (!id) return router.push('/')
   appId.value = id
   try {
     const res = await getAppVoById({ id: id as any })
+    if (fetchToken !== activeFetchToken) return
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
       await loadChatHistory()
+      if (fetchToken !== activeFetchToken) return
       if (messages.value.length >= 2) updatePreview()
       if (
         appInfo.value.initPrompt &&
@@ -390,8 +430,43 @@ const sendMessage = async () => {
 
 // ── 代码生成（SSE 流式）──────────────────────────────────────────────────────
 const generateCode = async (userMessage: string, idx: number) => {
+  closeCurrentStream()
+
+  const streamToken = ++activeStreamToken
   let eventSource: EventSource | null = null
   let completed = false
+  let full = ''
+  let pendingChunk = ''
+  let rafId: number | null = null
+
+  const flushPending = () => {
+    if (completed || !pendingChunk) return
+    full += pendingChunk
+    pendingChunk = ''
+    if (!messages.value[idx]) return
+    messages.value[idx].content = full
+    messages.value[idx].loading = false
+    scrollToBottom()
+  }
+
+  const scheduleFlush = () => {
+    if (rafId !== null) return
+    rafId = window.requestAnimationFrame(() => {
+      rafId = null
+      flushPending()
+    })
+  }
+
+  const disposeStream = () => {
+    completed = true
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId)
+      rafId = null
+    }
+    eventSource?.close()
+    eventSource = null
+  }
+
   try {
     const baseURL = request.defaults.baseURL || API_BASE_URL
     const params = new URLSearchParams({
@@ -402,33 +477,47 @@ const generateCode = async (userMessage: string, idx: number) => {
     eventSource = new EventSource(`${baseURL}/app/chat/gen/code?${params}`, {
       withCredentials: true,
     })
-    let full = ''
+    activeEventSource.value = eventSource
+    stopCurrentStream = disposeStream
+
     eventSource.onmessage = (e) => {
       if (completed) return
-      const content = JSON.parse(e.data).d
+      let content = ''
+      try {
+        content = JSON.parse(e.data).d
+      } catch {
+        return
+      }
       if (content) {
-        full += content
-        messages.value[idx].content = full
-        messages.value[idx].loading = false
-        scrollToBottom()
+        pendingChunk += content
+        scheduleFlush()
       }
     }
+
     const finish = () => {
       if (completed) return
-      completed = true
+      flushPending()
+      disposeStream()
+      if (streamToken !== activeStreamToken) return
       isGenerating.value = false
-      eventSource?.close()
+      activeEventSource.value = null
+      stopCurrentStream = null
       setTimeout(() => {
+        if (streamToken !== activeStreamToken) return
         fetchAppInfo()
-        updatePreview(true) // ✅ 只有这里强制刷新
+        updatePreview(true)
       }, 1000)
     }
+
     eventSource.addEventListener('done', finish)
     eventSource.onerror = () => {
       if (!completed) finish()
     }
   } catch (e) {
+    disposeStream()
     isGenerating.value = false
+    activeEventSource.value = null
+    stopCurrentStream = null
   }
 }
 
@@ -454,9 +543,12 @@ const onIframeLoad = () => {
   previewReady.value = true
   if (previewIframe.value) {
     setIframe(previewIframe.value)
-    // 每次 iframe 刷新后，若处于编辑模式则重新注入脚本
+    // 每次 iframe 刷新后，若处于编辑模式则重新注入脚本并重新下发模式状态
     if (isEditMode.value) {
       injectEditorScript()
+      window.setTimeout(() => {
+        previewIframe.value?.contentWindow?.postMessage({ type: 'VE_SET_MODE', editMode: true }, '*')
+      }, 50)
     }
     // 有预览内容时才提示（避免初始加载也弹提示）
     if (previewUrl.value && previewUrl.value.includes('?t=')) {
@@ -498,7 +590,24 @@ const deleteApp = async () => {
   if (res.data.code === 0) await router.push('/')
 }
 
-onMounted(() => fetchAppInfo())
+onMounted(() => {
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  fetchAppInfo()
+})
+
+watch(
+  () => route.params.id,
+  async (newId, oldId) => {
+    if (!newId || newId === oldId) return
+    resetPageState()
+    await fetchAppInfo()
+  },
+)
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  resetPageState()
+})
 
 // ── 下载代码 ──────────────────────────────────────────────────────────────────
 const downloading = ref(false)
