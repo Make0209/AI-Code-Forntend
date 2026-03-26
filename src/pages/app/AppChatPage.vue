@@ -82,7 +82,7 @@
                 已选中元素：
                 <code class="element-tag">&lt;{{ selectedElement.tagName }}&gt;</code>
                 <span v-if="selectedElement.id" class="element-attr"
-                  >#{{ selectedElement.id }}</span
+                >#{{ selectedElement.id }}</span
                 >
                 <span v-if="selectedElement.textContent" class="element-text">
                   「{{ selectedElement.textContent }}」
@@ -502,11 +502,8 @@ const generateCode = async (userMessage: string, idx: number) => {
       isGenerating.value = false
       activeEventSource.value = null
       stopCurrentStream = null
-      setTimeout(() => {
-        if (streamToken !== activeStreamToken) return
-        fetchAppInfo()
-        updatePreview(true)
-      }, 1000)
+      // 后端同步构建已完成，done 触发时文件已就绪，加时间戳强制 iframe 加载新文件
+      updatePreview(true)
     }
 
     eventSource.addEventListener('done', finish)
