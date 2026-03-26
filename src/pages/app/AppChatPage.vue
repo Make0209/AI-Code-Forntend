@@ -57,7 +57,11 @@
                 <a-avatar :src="currentAiAvatar" />
               </div>
               <div class="message-content">
-                <MarkdownRenderer v-if="message.content" :content="message.content" />
+                <div v-if="message.isError" class="ai-error-message">
+                  <span class="ai-error-icon">⚠️</span>
+                  <span class="ai-error-text">{{ message.content }}</span>
+                </div>
+                <MarkdownRenderer v-else-if="message.content" :content="message.content" />
                 <div v-if="message.loading" class="loading-indicator">
                   <a-spin size="small" />
                   <span>AI 正在思考...</span>
@@ -201,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, handleError, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLoginUserStore } from '@/stores/loginUser'
 import {
@@ -263,6 +267,7 @@ interface Message {
   type: 'user' | 'ai'
   content: string
   loading?: boolean
+  isError?: boolean
   createTime?: string
 }
 
@@ -502,14 +507,35 @@ const generateCode = async (userMessage: string, idx: number) => {
       isGenerating.value = false
       activeEventSource.value = null
       stopCurrentStream = null
-      setTimeout(() => {
-        if (streamToken !== activeStreamToken) return
-        fetchAppInfo()
-        updatePreview(true)
-      }, 1000)
+      // 后端同步构建已完成，done 触发时文件已就绪，加时间戳强制 iframe 加载新文件
+      updatePreview(true)
     }
 
     eventSource.addEventListener('done', finish)
+
+    eventSource.addEventListener('business-error', (e: MessageEvent) => {
+      if (completed) return
+      let errMsg = '请求失败，请稍后重试'
+      try {
+        const data = JSON.parse(e.data)
+        errMsg = data.message || errMsg
+      } catch {
+        // 解析失败则使用默认错误信息
+      }
+      flushPending()
+      disposeStream()
+      if (streamToken !== activeStreamToken) return
+      isGenerating.value = false
+      activeEventSource.value = null
+      stopCurrentStream = null
+      if (messages.value[idx]) {
+        messages.value[idx].loading = false
+        messages.value[idx].isError = true
+        messages.value[idx].content = errMsg
+      }
+      scrollToBottom()
+    })
+
     eventSource.onerror = () => {
       if (!completed) finish()
     }
@@ -547,7 +573,10 @@ const onIframeLoad = () => {
     if (isEditMode.value) {
       injectEditorScript()
       window.setTimeout(() => {
-        previewIframe.value?.contentWindow?.postMessage({ type: 'VE_SET_MODE', editMode: true }, '*')
+        previewIframe.value?.contentWindow?.postMessage(
+          { type: 'VE_SET_MODE', editMode: true },
+          '*',
+        )
       }, 50)
     }
     // 有预览内容时才提示（避免初始加载也弹提示）
@@ -736,6 +765,34 @@ const downloadCode = async () => {
 }
 .is-dark .ai-message .message-content {
   background: #2a2a2a;
+}
+
+/* ── AI 业务错误消息 ─────────────────────────────────────────────────────────── */
+.ai-error-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  color: #cf1322;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.is-dark .ai-error-message {
+  background: rgba(255, 77, 79, 0.1);
+  border-color: rgba(255, 77, 79, 0.3);
+  color: #ff7875;
+}
+.ai-error-icon {
+  flex-shrink: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.ai-error-text {
+  flex: 1;
+  word-break: break-word;
 }
 .code-gen-type-tag {
   font-size: 12px;
