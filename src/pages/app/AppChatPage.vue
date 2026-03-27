@@ -86,7 +86,7 @@
                 已选中元素：
                 <code class="element-tag">&lt;{{ selectedElement.tagName }}&gt;</code>
                 <span v-if="selectedElement.id" class="element-attr"
-                  >#{{ selectedElement.id }}</span
+                >#{{ selectedElement.id }}</span
                 >
                 <span v-if="selectedElement.textContent" class="element-text">
                   「{{ selectedElement.textContent }}」
