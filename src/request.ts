@@ -6,7 +6,7 @@ const DEV_BASE_URL = 'http://localhost:8123/api'
 const PROD_BASE_URL = '/api'
 
 const myAxios = axios.create({
-  baseURL: DEV_BASE_URL,
+  baseURL: import.meta.env.DEV ? DEV_BASE_URL : PROD_BASE_URL, // ✅ 加这一行
   timeout: 60000,
 })
 
